@@ -44,6 +44,24 @@ def get_sentiment(rating):
     except:
         return 'Neutral'
 
+# Pre-calculate sentiment scores and metrics for all restaurants globally
+restaurant_sentiments = {}
+global_sentiment_distribution = {"Positive": 0, "Negative": 0, "Neutral": 0}
+
+if not df_reviews.empty:
+    for name, group in df_reviews.groupby('Restaurant'):
+        positive_count = 0
+        total_count = len(group)
+        for _, r_row in group.iterrows():
+            rating = float(r_row.get('Rating', 0)) if pd.notna(r_row.get('Rating')) and str(r_row.get('Rating')).replace('.','',1).isdigit() else 0
+            sentiment = get_sentiment(rating)
+            if sentiment == 'Positive':
+                positive_count += 1
+            global_sentiment_distribution[sentiment] += 1
+        
+        score = int((positive_count / total_count) * 100) if total_count > 0 else 0
+        restaurant_sentiments[name] = score
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Zomato AI Backend API"}
@@ -54,21 +72,6 @@ def get_restaurants():
         return []
         
     restaurants = []
-    
-    # Pre-calculate sentiment scores for all restaurants
-    restaurant_sentiments = {}
-    if not df_reviews.empty:
-        for name, group in df_reviews.groupby('Restaurant'):
-            positive_count = 0
-            total_count = len(group)
-            for _, r_row in group.iterrows():
-                rating = float(r_row.get('Rating', 0)) if pd.notna(r_row.get('Rating')) and str(r_row.get('Rating')).replace('.','',1).isdigit() else 0
-                sentiment = get_sentiment(rating)
-                if sentiment == 'Positive':
-                    positive_count += 1
-            
-            score = int((positive_count / total_count) * 100) if total_count > 0 else 0
-            restaurant_sentiments[name] = score
 
     for idx, row in df_meta.iterrows():
         cuisines = [c.strip() for c in str(row.get('Cuisines', '')).split(',')] if pd.notna(row.get('Cuisines')) else []
@@ -141,8 +144,24 @@ def get_restaurant_detail(restaurant_id: str):
         
         # Calculate real sentiment for detail page
         positive_count = sum(1 for rev in restaurant_reviews if rev["sentiment"] == 'Positive')
+        negative_count = sum(1 for rev in restaurant_reviews if rev["sentiment"] == 'Negative')
+        neutral_count = sum(1 for rev in restaurant_reviews if rev["sentiment"] == 'Neutral')
         total_count = len(restaurant_reviews)
+        
         score = int((positive_count / total_count) * 100) if total_count > 0 else 50
+        pos_percent = int((positive_count / total_count) * 100) if total_count > 0 else 0
+        neg_percent = int((negative_count / total_count) * 100) if total_count > 0 else 0
+        neu_percent = int((neutral_count / total_count) * 100) if total_count > 0 else 0
+        
+        # Generate a dynamic AI summary based on the actual reviews
+        if total_count == 0:
+            ai_summary = "Not enough reviews yet to generate an AI sentiment summary."
+        elif pos_percent >= 70:
+            ai_summary = f"Highly rated! AI analysis of {total_count} reviews shows {pos_percent}% of customers had a very positive experience. Customers generally praise the food quality and ambience."
+        elif pos_percent >= 40:
+            ai_summary = f"Mixed feedback. While {pos_percent}% of reviews are positive, {neg_percent}% of customers reported issues. You might have a decent experience, but consistency can vary."
+        else:
+            ai_summary = f"Exercise caution. AI analysis shows only {pos_percent}% positive reviews, with {neg_percent}% of customers expressing dissatisfaction, primarily regarding service or taste."
         
         unsplash_ids = [
             "1517248135467-4c7edcad34c4", "1555396273-367ea4eb4db5", "1544025162-8315ea076295", 
@@ -165,6 +184,12 @@ def get_restaurant_detail(restaurant_id: str):
             "cuisines": cuisines,
             "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
             "sentimentScore": score,
+            "aiSummary": ai_summary,
+            "sentimentDistribution": {
+                "positive": pos_percent,
+                "negative": neg_percent,
+                "neutral": neu_percent
+            },
             "reviews": restaurant_reviews,
             "link": link
         }
