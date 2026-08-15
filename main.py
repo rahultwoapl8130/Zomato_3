@@ -82,6 +82,14 @@ def get_restaurants():
         
         # Use calculated sentiment score or fallback to a default (e.g., 50)
         score = restaurant_sentiments.get(name, 50)
+        
+        # Generate AI Explainability text
+        ai_explanation = None
+        if score >= 75:
+            top_cuisine = cuisines[0] if cuisines else "food"
+            ai_explanation = f"AI Recommended ✨: 90%+ confidence. Matches your love for {top_cuisine} with highly rated Ambience."
+        elif score >= 60:
+            ai_explanation = f"AI Highlight: Consistently positive reviews for Taste."
 
         unsplash_ids = [
             "1517248135467-4c7edcad34c4", "1555396273-367ea4eb4db5", "1544025162-8315ea076295", 
@@ -104,6 +112,7 @@ def get_restaurants():
             "cuisines": cuisines,
             "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
             "sentimentScore": score,
+            "aiExplanation": ai_explanation,
             "deliveryTime": "30-45 min",
             "link": link
         })
@@ -179,12 +188,27 @@ def get_restaurant_detail(restaurant_id: str):
         dish_types = ["Special", "Signature", "Classic", "Spicy", "Authentic", "Premium", "Chef's"]
         for i in range(6):
             c_name = cuisines[i % len(cuisines)] if cuisines else "House"
+            d_type = random.choice(dish_types)
+            
+            # Generate simulated ML dish sentiment
+            d_score = random.randint(20, 98)
+            if d_type in ["Signature", "Special", "Chef's"]:
+                d_score = random.randint(75, 99)
+                
+            ai_tag = "Average"
+            if d_score >= 80:
+                ai_tag = "Must Try 🏆"
+            elif d_score <= 40:
+                ai_tag = "Avoid ⚠️"
+                
             menu.append({
                 "id": f"m{i+1}",
-                "name": f"{random.choice(dish_types)} {c_name} Dish",
+                "name": f"{d_type} {c_name} Dish",
                 "description": f"Authentic {c_name} preparation with fresh ingredients and secret spices.",
                 "price": random.randint(150, 600),
-                "image": f"https://images.unsplash.com/photo-{random.choice(unsplash_ids)}?w=200&h=200&auto=format&fit=crop&q=60"
+                "image": f"https://images.unsplash.com/photo-{random.choice(unsplash_ids)}?w=200&h=200&auto=format&fit=crop&q=60",
+                "dishSentimentScore": d_score,
+                "aiTag": ai_tag
             })
 
         return {
