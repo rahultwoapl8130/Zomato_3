@@ -79,7 +79,7 @@ def get_restaurants():
         
         # Use calculated sentiment score or fallback to a default (e.g., 50)
         score = restaurant_sentiments.get(name, 50)
-        
+
         restaurants.append({
             "id": f"r{idx+1}",
             "name": name,
@@ -87,7 +87,7 @@ def get_restaurants():
             "rating": round(random.uniform(3.0, 5.0), 1),
             "costForTwo": cost,
             "cuisines": cuisines,
-            "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=60",
+            "image": f"https://loremflickr.com/400/300/food,dish?lock={idx+1}",
             "sentimentScore": score,
             "deliveryTime": "30-45 min",
             "link": link
@@ -139,7 +139,7 @@ def get_restaurant_detail(restaurant_id: str):
             "rating": round(random.uniform(3.0, 5.0), 1),
             "costForTwo": cost,
             "cuisines": cuisines,
-            "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=60",
+            "image": f"https://loremflickr.com/400/300/food,dish?lock={idx+1}",
             "sentimentScore": score,
             "reviews": restaurant_reviews,
             "link": link
