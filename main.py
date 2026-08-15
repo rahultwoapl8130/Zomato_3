@@ -175,6 +175,18 @@ def get_restaurant_detail(restaurant_id: str):
             "1478144592103-25e218a04891"
         ]
 
+        menu = []
+        dish_types = ["Special", "Signature", "Classic", "Spicy", "Authentic", "Premium", "Chef's"]
+        for i in range(6):
+            c_name = cuisines[i % len(cuisines)] if cuisines else "House"
+            menu.append({
+                "id": f"m{i+1}",
+                "name": f"{random.choice(dish_types)} {c_name} Dish",
+                "description": f"Authentic {c_name} preparation with fresh ingredients and secret spices.",
+                "price": random.randint(150, 600),
+                "image": f"https://images.unsplash.com/photo-{random.choice(unsplash_ids)}?w=200&h=200&auto=format&fit=crop&q=60"
+            })
+
         return {
             "id": restaurant_id,
             "name": name,
@@ -191,6 +203,7 @@ def get_restaurant_detail(restaurant_id: str):
                 "neutral": neu_percent
             },
             "reviews": restaurant_reviews,
+            "menu": menu,
             "link": link
         }
     except Exception as e:
