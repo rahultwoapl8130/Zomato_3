@@ -80,6 +80,18 @@ def get_restaurants():
         # Use calculated sentiment score or fallback to a default (e.g., 50)
         score = restaurant_sentiments.get(name, 50)
 
+        unsplash_ids = [
+            "1517248135467-4c7edcad34c4", "1555396273-367ea4eb4db5", "1544025162-8315ea076295", 
+            "1565299624946-b28f40a0ae38", "1540189549336-e6e99c3679fe", "1414235077428-338989a2e8c0",
+            "1504674900247-0877df9cc836", "1473093295043-cdd812d0e601", "1555939594-58d7cb561ad1",
+            "1567620905732-2d1ec7ab7445", "1499028344343-cd173ffc68a9", "1455619452474-d2be8b1e70cd",
+            "1600891964092-4316c288032e", "1481931098730-318b6f776db0", "1476224203421-9ac39bcb3327",
+            "1460306855393-0410f61241c7", "1482049016688-2d0e983dd82c", "1496412705862-e0088f16f791",
+            "1432139555190-58524dae6a55", "1484723091771-3316e6d1820b", "1484980972926-ed4533cd8279",
+            "1529042410759-befb1204b468", "1565958011703-44f9829ba187", "1512621776951-a57141f2eefd",
+            "1478144592103-25e218a04891"
+        ]
+        
         restaurants.append({
             "id": f"r{idx+1}",
             "name": name,
@@ -87,7 +99,7 @@ def get_restaurants():
             "rating": round(random.uniform(3.0, 5.0), 1),
             "costForTwo": cost,
             "cuisines": cuisines,
-            "image": f"https://loremflickr.com/400/300/food,dish?lock={idx+1}",
+            "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
             "sentimentScore": score,
             "deliveryTime": "30-45 min",
             "link": link
@@ -132,6 +144,18 @@ def get_restaurant_detail(restaurant_id: str):
         total_count = len(restaurant_reviews)
         score = int((positive_count / total_count) * 100) if total_count > 0 else 50
         
+        unsplash_ids = [
+            "1517248135467-4c7edcad34c4", "1555396273-367ea4eb4db5", "1544025162-8315ea076295", 
+            "1565299624946-b28f40a0ae38", "1540189549336-e6e99c3679fe", "1414235077428-338989a2e8c0",
+            "1504674900247-0877df9cc836", "1473093295043-cdd812d0e601", "1555939594-58d7cb561ad1",
+            "1567620905732-2d1ec7ab7445", "1499028344343-cd173ffc68a9", "1455619452474-d2be8b1e70cd",
+            "1600891964092-4316c288032e", "1481931098730-318b6f776db0", "1476224203421-9ac39bcb3327",
+            "1460306855393-0410f61241c7", "1482049016688-2d0e983dd82c", "1496412705862-e0088f16f791",
+            "1432139555190-58524dae6a55", "1484723091771-3316e6d1820b", "1484980972926-ed4533cd8279",
+            "1529042410759-befb1204b468", "1565958011703-44f9829ba187", "1512621776951-a57141f2eefd",
+            "1478144592103-25e218a04891"
+        ]
+
         return {
             "id": restaurant_id,
             "name": name,
@@ -139,7 +163,7 @@ def get_restaurant_detail(restaurant_id: str):
             "rating": round(random.uniform(3.0, 5.0), 1),
             "costForTwo": cost,
             "cuisines": cuisines,
-            "image": f"https://loremflickr.com/400/300/food,dish?lock={idx+1}",
+            "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
             "sentimentScore": score,
             "reviews": restaurant_reviews,
             "link": link
