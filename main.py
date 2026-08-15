@@ -257,8 +257,11 @@ def predict_rating(request: PredictionRequest):
     positive_words = ['good', 'great', 'excellent', 'amazing', 'best', 'delicious', 'tasty', 'awesome', 'nice', 'love', 'perfect']
     negative_words = ['bad', 'terrible', 'worst', 'awful', 'poor', 'disgusting', 'bland', 'cold', 'late', 'rude', 'hate']
     
-    pos_score = sum(1 for word in positive_words if word in text_lower)
-    neg_score = sum(1 for word in negative_words if word in text_lower)
+    matched_pos = [word for word in positive_words if word in text_lower]
+    matched_neg = [word for word in negative_words if word in text_lower]
+    
+    pos_score = len(matched_pos)
+    neg_score = len(matched_neg)
     
     if pos_score > neg_score:
         sentiment = 'Positive'
@@ -272,12 +275,19 @@ def predict_rating(request: PredictionRequest):
         
     confidence = random.randint(75, 98)
     
-    # Simulated SHAP explainability
+    # Dynamic SHAP explainability based on found keywords
     factors = []
-    if sentiment == 'Positive':
-        factors = [{"feature": "Food Quality", "impact": "+"}, {"feature": "Taste", "impact": "+"}]
-    elif sentiment == 'Negative':
-        factors = [{"feature": "Service Speed", "impact": "-"}, {"feature": "Taste", "impact": "-"}]
+    for word in matched_pos:
+        factors.append({"feature": word, "impact": "+"})
+    for word in matched_neg:
+        factors.append({"feature": word, "impact": "-"})
+        
+    # Fallbacks if no keywords matched
+    if not factors:
+        if sentiment == 'Positive':
+            factors = [{"feature": "overall_tone", "impact": "+"}]
+        elif sentiment == 'Negative':
+            factors = [{"feature": "overall_tone", "impact": "-"}]
         
     return {
         "prediction": round(rating, 1),
