@@ -1,9 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import pandas as pd
 import os
 import json
 import random
+
+class PredictionRequest(BaseModel):
+    text: str
+    restaurant: str = None
+
 
 app = FastAPI(title="Zomato Restaurant AI Backend")
 
@@ -185,4 +191,49 @@ def get_dashboard():
         "reviews": all_reviews,
         "sentimentData": sentimentData,
         "cuisineData": cuisineData
+    }
+
+@app.post("/api/predict")
+def predict_rating(request: PredictionRequest):
+    if not request.text or len(request.text.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Review text is required")
+        
+    # Since .pkl models are not available in the deployment environment,
+    # we simulate the AI prediction based on heuristics and keywords for now
+    # to provide a clean API contract for the frontend without breaking deployment.
+    
+    text_lower = request.text.lower()
+    
+    # Simple heuristic-based keyword scoring
+    positive_words = ['good', 'great', 'excellent', 'amazing', 'best', 'delicious', 'tasty', 'awesome', 'nice', 'love', 'perfect']
+    negative_words = ['bad', 'terrible', 'worst', 'awful', 'poor', 'disgusting', 'bland', 'cold', 'late', 'rude', 'hate']
+    
+    pos_score = sum(1 for word in positive_words if word in text_lower)
+    neg_score = sum(1 for word in negative_words if word in text_lower)
+    
+    if pos_score > neg_score:
+        sentiment = 'Positive'
+        rating = random.uniform(4.0, 5.0)
+    elif neg_score > pos_score:
+        sentiment = 'Negative'
+        rating = random.uniform(1.0, 2.5)
+    else:
+        sentiment = 'Neutral'
+        rating = random.uniform(2.6, 3.9)
+        
+    confidence = random.randint(75, 98)
+    
+    # Simulated SHAP explainability
+    factors = []
+    if sentiment == 'Positive':
+        factors = [{"feature": "Food Quality", "impact": "+"}, {"feature": "Taste", "impact": "+"}]
+    elif sentiment == 'Negative':
+        factors = [{"feature": "Service Speed", "impact": "-"}, {"feature": "Taste", "impact": "-"}]
+        
+    return {
+        "prediction": round(rating, 1),
+        "sentiment": sentiment,
+        "confidence": confidence,
+        "model": "Simulated (LightGBM/BERT unavailable)",
+        "explainability": factors
     }
