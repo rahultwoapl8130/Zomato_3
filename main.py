@@ -48,21 +48,43 @@ def get_restaurants():
         return []
         
     restaurants = []
+    
+    # Pre-calculate sentiment scores for all restaurants
+    restaurant_sentiments = {}
+    if not df_reviews.empty:
+        for name, group in df_reviews.groupby('Restaurant'):
+            positive_count = 0
+            total_count = len(group)
+            for _, r_row in group.iterrows():
+                rating = float(r_row.get('Rating', 0)) if pd.notna(r_row.get('Rating')) and str(r_row.get('Rating')).replace('.','',1).isdigit() else 0
+                sentiment = get_sentiment(rating)
+                if sentiment == 'Positive':
+                    positive_count += 1
+            
+            score = int((positive_count / total_count) * 100) if total_count > 0 else 0
+            restaurant_sentiments[name] = score
+
     for idx, row in df_meta.iterrows():
         cuisines = [c.strip() for c in str(row.get('Cuisines', '')).split(',')] if pd.notna(row.get('Cuisines')) else []
         cost_str = str(row.get('Cost', '500')).replace(',', '')
         cost = int(cost_str) if cost_str.isdigit() else 500
+        name = row.get('Name', '')
+        link = str(row.get('Links', ''))
+        
+        # Use calculated sentiment score or fallback to a default (e.g., 50)
+        score = restaurant_sentiments.get(name, 50)
         
         restaurants.append({
             "id": f"r{idx+1}",
-            "name": row.get('Name', ''),
+            "name": name,
             "location": "Hyderabad",
             "rating": round(random.uniform(3.0, 5.0), 1),
             "costForTwo": cost,
             "cuisines": cuisines,
             "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=60",
-            "sentimentScore": random.randint(70, 99),
-            "deliveryTime": "30-45 min"
+            "sentimentScore": score,
+            "deliveryTime": "30-45 min",
+            "link": link
         })
     return restaurants
 
@@ -97,6 +119,12 @@ def get_restaurant_detail(restaurant_id: str):
         cuisines = [c.strip() for c in str(row.get('Cuisines', '')).split(',')] if pd.notna(row.get('Cuisines')) else []
         cost_str = str(row.get('Cost', '500')).replace(',', '')
         cost = int(cost_str) if cost_str.isdigit() else 500
+        link = str(row.get('Links', ''))
+        
+        # Calculate real sentiment for detail page
+        positive_count = sum(1 for rev in restaurant_reviews if rev["sentiment"] == 'Positive')
+        total_count = len(restaurant_reviews)
+        score = int((positive_count / total_count) * 100) if total_count > 0 else 50
         
         return {
             "id": restaurant_id,
@@ -106,8 +134,9 @@ def get_restaurant_detail(restaurant_id: str):
             "costForTwo": cost,
             "cuisines": cuisines,
             "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=60",
-            "sentimentScore": random.randint(70, 99),
-            "reviews": restaurant_reviews
+            "sentimentScore": score,
+            "reviews": restaurant_reviews,
+            "link": link
         }
     except Exception as e:
         return {"error": str(e)}
