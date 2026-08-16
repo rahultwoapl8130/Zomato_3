@@ -46,21 +46,31 @@ def get_sentiment(rating):
 
 # Pre-calculate sentiment scores and metrics for all restaurants globally
 restaurant_sentiments = {}
+restaurant_avg_ratings = {}
 global_sentiment_distribution = {"Positive": 0, "Negative": 0, "Neutral": 0}
 
 if not df_reviews.empty:
     for name, group in df_reviews.groupby('Restaurant'):
         positive_count = 0
+        total_rating_sum = 0
+        valid_rating_count = 0
         total_count = len(group)
         for _, r_row in group.iterrows():
             rating = float(r_row.get('Rating', 0)) if pd.notna(r_row.get('Rating')) and str(r_row.get('Rating')).replace('.','',1).isdigit() else 0
+            if rating > 0:
+                total_rating_sum += rating
+                valid_rating_count += 1
+                
             sentiment = get_sentiment(rating)
             if sentiment == 'Positive':
                 positive_count += 1
             global_sentiment_distribution[sentiment] += 1
         
         score = int((positive_count / total_count) * 100) if total_count > 0 else 0
+        avg_r = round(total_rating_sum / valid_rating_count, 1) if valid_rating_count > 0 else 3.5
+        
         restaurant_sentiments[name] = score
+        restaurant_avg_ratings[name] = avg_r
 
 @app.get("/")
 def read_root():
@@ -87,7 +97,7 @@ def get_restaurants():
         ai_explanation = None
         if score >= 75:
             top_cuisine = cuisines[0] if cuisines else "food"
-            ai_explanation = f"AI Recommended ✨: 90%+ confidence. Matches your love for {top_cuisine} with highly rated Ambience."
+            ai_explanation = f"AI Recommended ✨: High confidence based on {score}% positive feedback. Matches your love for {top_cuisine}."
         elif score >= 60:
             ai_explanation = f"AI Highlight: Consistently positive reviews for Taste."
         else:
@@ -109,7 +119,7 @@ def get_restaurants():
             "id": f"r{idx+1}",
             "name": name,
             "location": "Hyderabad",
-            "rating": round(random.uniform(3.0, 5.0), 1),
+            "rating": restaurant_avg_ratings.get(name, 3.5),
             "costForTwo": cost,
             "cuisines": cuisines,
             "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
@@ -217,7 +227,7 @@ def get_restaurant_detail(restaurant_id: str):
             "id": restaurant_id,
             "name": name,
             "location": "Hyderabad",
-            "rating": round(random.uniform(3.0, 5.0), 1),
+            "rating": restaurant_avg_ratings.get(name, 3.5),
             "costForTwo": cost,
             "cuisines": cuisines,
             "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
