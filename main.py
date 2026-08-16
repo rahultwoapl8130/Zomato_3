@@ -90,6 +90,8 @@ def get_restaurants():
             ai_explanation = f"AI Recommended ✨: 90%+ confidence. Matches your love for {top_cuisine} with highly rated Ambience."
         elif score >= 60:
             ai_explanation = f"AI Highlight: Consistently positive reviews for Taste."
+        else:
+            ai_explanation = f"AI Note: Mixed feedback. Check recent reviews before visiting."
 
         unsplash_ids = [
             "1517248135467-4c7edcad34c4", "1555396273-367ea4eb4db5", 
