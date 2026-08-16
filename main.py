@@ -47,7 +47,15 @@ def get_sentiment(rating):
 # Pre-calculate sentiment scores and metrics for all restaurants globally
 restaurant_sentiments = {}
 restaurant_avg_ratings = {}
+restaurant_best_for = {}
+restaurant_pros = {}
+restaurant_cons = {}
+restaurant_dish_insights = {}
 global_sentiment_distribution = {"Positive": 0, "Negative": 0, "Neutral": 0}
+
+FOOD_KEYWORDS = ["burger", "pizza", "biryani", "pasta", "chicken", "paneer", "dosa", "dessert", "cake", "coffee", "tea", "sandwich", "fries", "kebab", "thali", "fish", "mutton", "dal", "roti", "naan", "rice", "noodles", "sushi", "momos"]
+PROS_KEYWORDS = ["taste", "tasty", "delicious", "yummy", "good", "great", "awesome", "nice", "ambience", "service", "fast", "quick", "friendly", "clean", "hygiene", "fresh", "hot", "spicy", "sweet", "perfect"]
+CONS_KEYWORDS = ["bad", "worst", "terrible", "horrible", "late", "slow", "cold", "stale", "smell", "dirty", "rude", "expensive", "overpriced", "salty", "bland", "poor", "pathetic"]
 
 if not df_reviews.empty:
     for name, group in df_reviews.groupby('Restaurant'):
@@ -55,8 +63,15 @@ if not df_reviews.empty:
         total_rating_sum = 0
         valid_rating_count = 0
         total_count = len(group)
+        
+        food_mentions = {k: {'pos': 0, 'total': 0} for k in FOOD_KEYWORDS}
+        pros_counts = {k: 0 for k in PROS_KEYWORDS}
+        cons_counts = {k: 0 for k in CONS_KEYWORDS}
+        
         for _, r_row in group.iterrows():
             rating = float(r_row.get('Rating', 0)) if pd.notna(r_row.get('Rating')) and str(r_row.get('Rating')).replace('.','',1).isdigit() else 0
+            review_text = str(r_row.get('Review', '')).lower()
+            
             if rating > 0:
                 total_rating_sum += rating
                 valid_rating_count += 1
@@ -64,13 +79,51 @@ if not df_reviews.empty:
             sentiment = get_sentiment(rating)
             if sentiment == 'Positive':
                 positive_count += 1
+                for p in PROS_KEYWORDS:
+                    if p in review_text: pros_counts[p] += 1
+            elif sentiment == 'Negative':
+                for c in CONS_KEYWORDS:
+                    if c in review_text: cons_counts[c] += 1
+            
             global_sentiment_distribution[sentiment] += 1
+            
+            # Check food keywords
+            for f in FOOD_KEYWORDS:
+                if f in review_text:
+                    food_mentions[f]['total'] += 1
+                    if sentiment == 'Positive':
+                        food_mentions[f]['pos'] += 1
         
         score = int((positive_count / total_count) * 100) if total_count > 0 else 0
         avg_r = round(total_rating_sum / valid_rating_count, 1) if valid_rating_count > 0 else 3.5
         
+        # Calculate best for and dish insights
+        best_for_dish = None
+        best_for_score = -1
+        dish_insights = []
+        
+        for dish, stats in food_mentions.items():
+            if stats['total'] >= 1: # Min mentions to be considered
+                dish_score = int((stats['pos'] / stats['total']) * 100)
+                dish_insights.append({"name": dish.capitalize(), "score": dish_score})
+                if dish_score > best_for_score and stats['total'] >= 2:
+                    best_for_score = dish_score
+                    best_for_dish = dish.capitalize()
+                    
+        dish_insights.sort(key=lambda x: x["score"], reverse=True)
+        
+        sorted_pros = sorted(pros_counts.items(), key=lambda x: x[1], reverse=True)
+        sorted_cons = sorted(cons_counts.items(), key=lambda x: x[1], reverse=True)
+        
+        top_pros = [p[0].capitalize() for p in sorted_pros if p[1] >= 1][:2]
+        top_cons = [c[0].capitalize() for c in sorted_cons if c[1] >= 1][:2]
+        
         restaurant_sentiments[name] = score
         restaurant_avg_ratings[name] = avg_r
+        restaurant_best_for[name] = best_for_dish
+        restaurant_pros[name] = top_pros
+        restaurant_cons[name] = top_cons
+        restaurant_dish_insights[name] = dish_insights[:5]
 
 @app.get("/")
 def read_root():
@@ -125,6 +178,8 @@ def get_restaurants():
             "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
             "sentimentScore": score,
             "aiExplanation": ai_explanation,
+            "bestFor": restaurant_best_for.get(name),
+            "dishInsights": restaurant_dish_insights.get(name, []),
             "deliveryTime": "30-45 min",
             "link": link
         })
@@ -233,10 +288,14 @@ def get_restaurant_detail(restaurant_id: str):
             "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
             "sentimentScore": score,
             "aiSummary": ai_summary,
+            "bestFor": restaurant_best_for.get(name),
+            "pros": restaurant_pros.get(name, []),
+            "cons": restaurant_cons.get(name, []),
+            "dishInsights": restaurant_dish_insights.get(name, []),
             "sentimentDistribution": {
                 "positive": pos_percent,
-                "negative": neg_percent,
-                "neutral": neu_percent
+                "neutral": neu_percent,
+                "negative": neg_percent
             },
             "reviews": restaurant_reviews,
             "menu": menu,
