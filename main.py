@@ -5,6 +5,10 @@ import pandas as pd
 import os
 import json
 import random
+import rag_engine
+
+class ChatRequest(BaseModel):
+    query: str
 
 class PredictionRequest(BaseModel):
     text: str
@@ -33,6 +37,12 @@ except Exception as e:
     print(f"Error loading CSV files: {e}")
     df_meta = pd.DataFrame()
     df_reviews = pd.DataFrame()
+
+# Initialize RAG Engine with reviews data
+try:
+    rag_engine.init_rag(df_reviews)
+except Exception as e:
+    print(f"RAG Initialization failed: {e}")
 
 # Helper for Sentiment (Mocking ML model behavior until actual model is integrated)
 def get_sentiment(rating):
@@ -487,3 +497,11 @@ def predict_rating(request: PredictionRequest):
         "model": "Simulated (LightGBM/BERT unavailable)",
         "explainability": factors
     }
+
+@app.post("/api/chat")
+def chat_with_ai(req: ChatRequest):
+    try:
+        response_text = rag_engine.query_rag(req.query)
+        return {"response": response_text}
+    except Exception as e:
+        return {"response": f"Error communicating with AI: {str(e)}"}
