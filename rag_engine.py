@@ -117,5 +117,6 @@ Be concise, helpful, and friendly. Do not hallucinate.
         return response.text
         
     except Exception as e:
-        print(f"RAG Error: {e}")
-        return f"Sorry, I encountered an error while processing your request. Please try again."
+        error_msg = f"RAG Engine Error: {str(e)}"
+        print(error_msg)
+        return f"Sorry, backend error: {str(e)}"
