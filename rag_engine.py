@@ -100,7 +100,7 @@ def query_rag(query: str):
         
         # 2. Ask Gemini AI to generate the answer
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
         prompt = f"""
 You are an expert Restaurant AI Assistant for Zomato. 
