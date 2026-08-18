@@ -91,7 +91,7 @@ def query_rag(query: str):
 
     try:
         # 1. Search using our ultra-lightweight memory search
-        retrieved_reviews = simple_keyword_search(query, top_k=15)
+        retrieved_reviews = simple_keyword_search(query, top_k=5)
         
         if not retrieved_reviews:
             context_str = "No specific reviews found matching this exact query."
@@ -102,18 +102,17 @@ def query_rag(query: str):
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel('gemini-3.6-flash')
         
-        prompt = f"""
-You are an expert Restaurant AI Assistant for Zomato. 
-A user has asked: "{query}"
-
-Here are the most relevant customer reviews from our database:
+        prompt = f"""You are a Zomato Restaurant AI. User asked: "{query}"
+Relevant reviews:
 {context_str}
-
-Based ONLY on the provided reviews, answer the user's question. 
-If they ask for recommendations, suggest the restaurants mentioned positively in the reviews.
-Be concise, helpful, and friendly. Do not hallucinate.
-"""
-        response = model.generate_content(prompt)
+Give a short, helpful answer (max 3-4 sentences). Recommend restaurants from reviews. Be friendly."""
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                max_output_tokens=250,
+                temperature=0.7
+            )
+        )
         return response.text
         
     except Exception as e:
