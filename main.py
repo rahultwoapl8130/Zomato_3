@@ -549,3 +549,62 @@ def chat_with_ai(req: ChatRequest):
         return {"response": response_text}
     except Exception as e:
         return {"response": f"Error communicating with AI: {str(e)}"}
+
+class ReviewSubmitRequest(BaseModel):
+    customerName: str
+    rating: float
+    text: str
+
+@app.post("/api/restaurants/{restaurant_id}/reviews")
+def add_restaurant_review(restaurant_id: str, req: ReviewSubmitRequest):
+    global df_reviews, global_sentiment_distribution
+    try:
+        idx = int(restaurant_id.replace('r', '')) - 1
+        if idx < 0 or idx >= len(df_meta):
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+            
+        row = df_meta.iloc[idx]
+        name = row.get('Name', '')
+        
+        # 1. Update global dataframe so detail page dynamically picks it up
+        new_rev = pd.DataFrame([{
+            'Restaurant': name,
+            'Reviewer': req.customerName,
+            'Review': req.text,
+            'Rating': req.rating,
+            'Time': '2026-08-20' # Using current date
+        }])
+        
+        df_reviews = pd.concat([df_reviews, new_rev], ignore_index=True)
+        
+        # 2. Update RAG Chatbot Knowledge
+        rag_engine.add_review(name, req.rating, req.text)
+        
+        # 3. Update cached dictionaries for the master list
+        sentiment = get_sentiment(req.rating)
+        global_sentiment_distribution[sentiment] = global_sentiment_distribution.get(sentiment, 0) + 1
+        
+        # Re-calculate averages for this specific restaurant
+        rev_df = df_reviews[df_reviews['Restaurant'] == name]
+        total = len(rev_df)
+        pos = 0
+        sum_rating = 0
+        valid_ratings = 0
+        for _, r_row in rev_df.iterrows():
+            r = float(r_row.get('Rating', 0)) if pd.notna(r_row.get('Rating')) and str(r_row.get('Rating')).replace('.','',1).isdigit() else 0
+            if r > 0:
+                sum_rating += r
+                valid_ratings += 1
+            if get_sentiment(r) == 'Positive':
+                pos += 1
+                
+        new_avg = round(sum_rating / valid_ratings, 1) if valid_ratings > 0 else 3.5
+        new_sentiment_score = int((pos / total) * 100) if total > 0 else 50
+        
+        restaurant_avg_ratings[name] = new_avg
+        restaurant_sentiments[name] = new_sentiment_score
+        restaurant_total_reviews[name] = total
+        
+        return {"status": "success", "message": "Review added and AI knowledge updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

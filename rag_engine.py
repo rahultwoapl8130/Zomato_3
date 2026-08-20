@@ -120,3 +120,20 @@ Give a short, helpful answer (max 3-4 sentences). Recommend restaurants from rev
         error_msg = f"RAG Engine Error: {str(e)}"
         print(error_msg)
         return f"Sorry, backend error: {str(e)}"
+
+def add_review(restaurant_name: str, rating: float, review_text: str):
+    global reviews_df
+    if reviews_df.empty:
+        return
+        
+    # Create a new DataFrame for the new row to avoid warnings
+    new_row = pd.DataFrame([{
+        'Restaurant': restaurant_name,
+        'Rating': rating,
+        'Review': review_text,
+        'clean_text': review_text.lower()
+    }])
+    
+    # Concatenate the new row
+    reviews_df = pd.concat([reviews_df, new_row], ignore_index=True)
+    print(f"RAG Engine: Live review added for {restaurant_name}")
