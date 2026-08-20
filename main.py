@@ -61,11 +61,21 @@ restaurant_best_for = {}
 restaurant_pros = {}
 restaurant_cons = {}
 restaurant_dish_insights = {}
+restaurant_aspects = {}
+restaurant_trends = {}
+restaurant_total_reviews = {}
 global_sentiment_distribution = {"Positive": 0, "Negative": 0, "Neutral": 0}
 
 FOOD_KEYWORDS = ["burger", "pizza", "biryani", "pasta", "chicken", "paneer", "dosa", "dessert", "cake", "coffee", "tea", "sandwich", "fries", "kebab", "thali", "fish", "mutton", "dal", "roti", "naan", "rice", "noodles", "sushi", "momos"]
 PROS_KEYWORDS = ["taste", "tasty", "delicious", "yummy", "good", "great", "awesome", "nice", "ambience", "service", "fast", "quick", "friendly", "clean", "hygiene", "fresh", "hot", "spicy", "sweet", "perfect"]
 CONS_KEYWORDS = ["bad", "worst", "terrible", "horrible", "late", "slow", "cold", "stale", "smell", "dirty", "rude", "expensive", "overpriced", "salty", "bland", "poor", "pathetic"]
+
+ASPECT_MAP = {
+    "Food": ["food", "taste", "delicious", "yummy", "chicken", "biryani", "paneer", "pizza", "burger", "meal", "dish", "stale", "bland"],
+    "Service": ["service", "staff", "waiter", "manager", "slow", "fast", "rude", "polite", "late", "quick", "delivery", "wait"],
+    "Ambience": ["ambience", "decor", "atmosphere", "music", "cozy", "place", "seating", "crowd", "dirty", "clean", "vibe"],
+    "Price": ["price", "cost", "expensive", "cheap", "value", "money", "overpriced", "worth", "bill"]
+}
 
 if not df_reviews.empty:
     for name, group in df_reviews.groupby('Restaurant'):
@@ -77,6 +87,9 @@ if not df_reviews.empty:
         food_mentions = {k: {'pos': 0, 'total': 0} for k in FOOD_KEYWORDS}
         pros_counts = {k: 0 for k in PROS_KEYWORDS}
         cons_counts = {k: 0 for k in CONS_KEYWORDS}
+        
+        aspect_counts = {k: {"pos": 0, "neu": 0, "neg": 0, "total": 0} for k in ASPECT_MAP.keys()}
+        sentiment_trend = {}
         
         for _, r_row in group.iterrows():
             rating = float(r_row.get('Rating', 0)) if pd.notna(r_row.get('Rating')) and str(r_row.get('Rating')).replace('.','',1).isdigit() else 0
@@ -97,6 +110,27 @@ if not df_reviews.empty:
             
             global_sentiment_distribution[sentiment] += 1
             
+            # Extract year from Time
+            time_str = str(r_row.get('Time', ''))
+            import re
+            year_match = re.search(r'(20\d\d)', time_str)
+            year = year_match.group(1) if year_match else "Unknown"
+            
+            if year != "Unknown":
+                if year not in sentiment_trend:
+                    sentiment_trend[year] = {"pos": 0, "neu": 0, "neg": 0}
+                if sentiment == 'Positive': sentiment_trend[year]["pos"] += 1
+                elif sentiment == 'Negative': sentiment_trend[year]["neg"] += 1
+                else: sentiment_trend[year]["neu"] += 1
+                
+            # Aspect Analysis
+            for aspect, kws in ASPECT_MAP.items():
+                if any(kw in review_text for kw in kws):
+                    aspect_counts[aspect]["total"] += 1
+                    if sentiment == 'Positive': aspect_counts[aspect]["pos"] += 1
+                    elif sentiment == 'Negative': aspect_counts[aspect]["neg"] += 1
+                    else: aspect_counts[aspect]["neu"] += 1
+            
             # Check food keywords
             for f in FOOD_KEYWORDS:
                 if f in review_text:
@@ -115,7 +149,11 @@ if not df_reviews.empty:
         for dish, stats in food_mentions.items():
             if stats['total'] >= 1: # Min mentions to be considered
                 dish_score = int((stats['pos'] / stats['total']) * 100)
-                dish_insights.append({"name": dish.capitalize(), "score": dish_score})
+                dish_insights.append({
+                    "name": dish.capitalize(), 
+                    "score": dish_score,
+                    "mentions": stats['total']
+                })
                 if dish_score > best_for_score and stats['total'] >= 2:
                     best_for_score = dish_score
                     best_for_dish = dish.capitalize()
@@ -133,7 +171,10 @@ if not df_reviews.empty:
         restaurant_best_for[name] = best_for_dish
         restaurant_pros[name] = top_pros
         restaurant_cons[name] = top_cons
-        restaurant_dish_insights[name] = dish_insights[:5]
+        restaurant_dish_insights[name] = dish_insights[:10]
+        restaurant_aspects[name] = aspect_counts
+        restaurant_trends[name] = sentiment_trend
+        restaurant_total_reviews[name] = total_count
 
 @app.get("/")
 def read_root():
@@ -302,6 +343,9 @@ def get_restaurant_detail(restaurant_id: str):
             "pros": restaurant_pros.get(name, []),
             "cons": restaurant_cons.get(name, []),
             "dishInsights": restaurant_dish_insights.get(name, []),
+            "aspectAnalysis": restaurant_aspects.get(name, {}),
+            "sentimentTrend": restaurant_trends.get(name, {}),
+            "totalReviews": restaurant_total_reviews.get(name, len(restaurant_reviews)),
             "sentimentDistribution": {
                 "positive": pos_percent,
                 "neutral": neu_percent,
