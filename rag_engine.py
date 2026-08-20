@@ -1,14 +1,18 @@
 import os
-import google.generativeai as genai
 import pandas as pd
 import threading
 import re
+from groq import Groq
 
 # Global state
 reviews_df = pd.DataFrame()
 is_initialized = False
 is_initializing = False
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+
+groq_client = None
+if GROQ_API_KEY:
+    groq_client = Groq(api_key=GROQ_API_KEY)
 
 def init_rag_async(df_reviews: pd.DataFrame):
     global reviews_df, is_initialized, is_initializing
@@ -86,8 +90,8 @@ def query_rag(query: str):
     if not is_initialized or reviews_df.empty:
         return "System is still initializing the Restaurant database. Please try again in a moment."
         
-    if not GEMINI_API_KEY:
-        return "GEMINI_API_KEY is not set in the backend environment. Please configure it to use the AI chat."
+    if not groq_client:
+        return "GROQ_API_KEY is not set in the backend environment. Please configure it to use the AI chat."
 
     try:
         # 1. Search using our ultra-lightweight memory search
@@ -98,22 +102,19 @@ def query_rag(query: str):
         else:
             context_str = "\n".join([f"- {rev}" for rev in retrieved_reviews])
         
-        # 2. Ask Gemini AI to generate the answer
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-3.6-flash')
-        
+        # 2. Ask Groq AI to generate the answer
         prompt = f"""You are a Zomato Restaurant AI. User asked: "{query}"
 Relevant reviews:
 {context_str}
 Give a short, helpful answer (max 3-4 sentences). Recommend restaurants from reviews. Be friendly."""
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=250,
-                temperature=0.7
-            )
+
+        response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama3-8b-8192",
+            temperature=0.7,
+            max_tokens=250
         )
-        return response.text
+        return response.choices[0].message.content
         
     except Exception as e:
         error_msg = f"RAG Engine Error: {str(e)}"
