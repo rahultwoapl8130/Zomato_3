@@ -351,6 +351,55 @@ def get_restaurant_detail(restaurant_id: str):
         # Sort recommendations by highest negative percentage
         business_recommendations.sort(key=lambda x: x["negativeMentions"], reverse=True)
 
+        # Generate Customer Segmentation (Vibe Analysis)
+        segment_counts = {"Couples": 0, "Family": 0, "Friends": 0, "Corporate": 0, "Solo": 0}
+        total_segments = 0
+        for rev in restaurant_reviews:
+            r_text = str(rev.get("text", "")).lower()
+            if "couple" in r_text or "date" in r_text or "romantic" in r_text:
+                segment_counts["Couples"] += 1
+                total_segments += 1
+            elif "family" in r_text or "kids" in r_text or "parents" in r_text:
+                segment_counts["Family"] += 1
+                total_segments += 1
+            elif "friends" in r_text or "group" in r_text:
+                segment_counts["Friends"] += 1
+                total_segments += 1
+            elif "business" in r_text or "corporate" in r_text or "meeting" in r_text:
+                segment_counts["Corporate"] += 1
+                total_segments += 1
+            elif "solo" in r_text or "alone" in r_text:
+                segment_counts["Solo"] += 1
+                total_segments += 1
+        
+        # Default distribution if none found
+        if total_segments == 0:
+            segmentation = [
+                {"name": "Family", "value": 40},
+                {"name": "Couples", "value": 30},
+                {"name": "Friends", "value": 20},
+                {"name": "Corporate", "value": 10},
+            ]
+        else:
+            segmentation = [
+                {"name": k, "value": int((v/total_segments)*100)} for k, v in segment_counts.items() if v > 0
+            ]
+            segmentation.sort(key=lambda x: x["value"], reverse=True)
+
+        trend_dict = restaurant_trends.get(name, {})
+        # Forecast calculation for 2026 based on last 2 available years
+        forecast_point = None
+        if trend_dict:
+            sorted_years = sorted([y for y in trend_dict.keys() if y.isdigit()])
+            if len(sorted_years) >= 2:
+                y2 = sorted_years[-1]
+                y1 = sorted_years[-2]
+                val2 = int((trend_dict[y2]["pos"] / max(1, trend_dict[y2]["pos"] + trend_dict[y2]["neg"] + trend_dict[y2]["neu"])) * 100)
+                val1 = int((trend_dict[y1]["pos"] / max(1, trend_dict[y1]["pos"] + trend_dict[y1]["neg"] + trend_dict[y1]["neu"])) * 100)
+                diff = val2 - val1
+                forecast_score = min(100, max(0, val2 + diff))
+                forecast_point = {"year": "2026 (Forecast)", "pos": forecast_score, "neg": 100-forecast_score, "neu": 0, "isForecast": True}
+
         return {
             "id": restaurant_id,
             "name": name,
@@ -358,16 +407,20 @@ def get_restaurant_detail(restaurant_id: str):
             "rating": restaurant_avg_ratings.get(name, 3.5),
             "costForTwo": cost,
             "cuisines": cuisines,
-            "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=800&auto=format&fit=crop&q=60",
+            "image": f"https://images.unsplash.com/photo-{unsplash_ids[idx % len(unsplash_ids)]}?w=1200&auto=format&fit=crop&q=80",
             "sentimentScore": score,
             "aiSummary": ai_summary,
-            "bestFor": restaurant_best_for.get(name),
             "pros": restaurant_pros.get(name, []),
             "cons": restaurant_cons.get(name, []),
+            "aspects": restaurant_aspects.get(name, {}),
+            "trends": trend_dict,
+            "forecast": forecast_point,
+            "bestFor": restaurant_best_for.get(name),
             "dishInsights": restaurant_dish_insights.get(name, []),
-            "aspectAnalysis": restaurant_aspects.get(name, {}),
-            "sentimentTrend": restaurant_trends.get(name, {}),
+            "menu": menu,
+            "reviews": sorted(restaurant_reviews, key=lambda x: x["date"], reverse=True)[:50],
             "businessRecommendations": business_recommendations,
+            "segmentation": segmentation,
             "totalReviews": restaurant_total_reviews.get(name, len(restaurant_reviews)),
             "sentimentDistribution": {
                 "positive": pos_percent,
@@ -657,3 +710,70 @@ def add_restaurant_review(restaurant_id: str, req: ReviewSubmitRequest):
         return {"status": "success", "message": "Review added and AI knowledge updated"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/analytics/positioning")
+def get_market_positioning():
+    if df_meta.empty:
+        return []
+    
+    positioning_data = []
+    # Pick top 200 restaurants to plot
+    for idx, row in df_meta.head(200).iterrows():
+        name = row.get('Name', '')
+        cost_str = str(row.get('Cost', '500')).replace(',', '')
+        cost = int(cost_str) if cost_str.isdigit() else 500
+        score = restaurant_sentiments.get(name, 50)
+        
+        positioning_data.append({
+            "id": f"r{idx+1}",
+            "name": name,
+            "price": cost,
+            "sentimentScore": score
+        })
+        
+    return {"data": positioning_data}
+
+@app.get("/api/recommendations/search")
+def search_restaurants(query: str):
+    if df_meta.empty:
+        return []
+        
+    query = query.lower()
+    matches = []
+    
+    for idx, row in df_meta.iterrows():
+        name = row.get('Name', '')
+        cuisines = str(row.get('Cuisines', '')).lower()
+        cost_str = str(row.get('Cost', '500')).replace(',', '')
+        cost = int(cost_str) if cost_str.isdigit() else 500
+        
+        # Simple scoring mechanism for search relevance
+        score = 0
+        if query in name.lower():
+            score += 10
+        if any(word in cuisines for word in query.split()):
+            score += 5
+            
+        # Extract number for budget searches (e.g. "under 1000")
+        import re
+        numbers = re.findall(r'\d+', query)
+        if numbers:
+            budget = int(numbers[0])
+            if "under" in query or "below" in query or "cheap" in query:
+                if cost <= budget:
+                    score += 5
+        
+        if score > 0:
+            ai_score = restaurant_sentiments.get(name, 50)
+            matches.append({
+                "id": f"r{idx+1}",
+                "name": name,
+                "relevance": score,
+                "sentimentScore": ai_score,
+                "costForTwo": cost,
+                "cuisines": [c.strip() for c in str(row.get('Cuisines', '')).split(',')] if pd.notna(row.get('Cuisines')) else [],
+                "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=60"
+            })
+            
+    matches.sort(key=lambda x: (x["relevance"], x["sentimentScore"]), reverse=True)
+    return matches[:10]
