@@ -110,7 +110,7 @@ Give a short, helpful answer (max 3-4 sentences). Recommend restaurants from rev
 
         response = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",
+            model="groq/compound-mini",
             temperature=0.7,
             max_tokens=250
         )
