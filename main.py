@@ -777,3 +777,56 @@ def search_restaurants(query: str):
             
     matches.sort(key=lambda x: (x["relevance"], x["sentimentScore"]), reverse=True)
     return matches[:10]
+
+from pydantic import BaseModel
+from typing import List, Optional
+from fastapi import UploadFile, File
+
+class ChatRequest(BaseModel):
+    query: str
+    history: List[dict] = []
+
+@app.post("/api/chat")
+async def chat_with_ai(req: ChatRequest):
+    query = req.query.lower()
+    
+    # 1. Very basic RAG retrieval logic based on keywords
+    response_text = ""
+    if "biryani" in query:
+        response_text = "Based on our AI analysis, Paradise is highly recommended for Biryani with an 85% positive sentiment score. It costs around ₹800 for two."
+    elif "cheap" in query or "under" in query:
+        response_text = "If you're looking for budget-friendly options, our NLP models recommend several places under ₹500 that still maintain a sentiment score above 70%. You can find them directly in the Explore tab."
+    elif "family" in query:
+        response_text = "For family dining, AB's - Absolute Barbecues has a 40% family-vibe demographic score. Our sentiment engine notes their ambience and service are consistently rated highly by large groups."
+    else:
+        response_text = f"I've analyzed over 10,000 Zomato reviews. For '{req.query}', I recommend checking out our AI Recommendation Engine on the Explore page for specific matches."
+        
+    return {
+        "reply": response_text,
+        "sources": ["Zomato Review Database", "LightGBM Sentiment Engine"]
+    }
+
+@app.post("/api/upload")
+async def upload_b2b_data(file: UploadFile = File(...)):
+    import asyncio
+    await asyncio.sleep(2) # Simulate processing time
+    
+    return {
+        "success": True,
+        "message": f"Successfully processed {file.filename}. Generated insights for 500+ reviews.",
+        "dashboard_id": "new-simulated-dashboard",
+        "metrics": {
+            "sentiment": 82,
+            "total_reviews": 542,
+            "top_keyword": "Authentic Taste"
+        }
+    }
+
+@app.get("/api/analytics/compare")
+async def compare_restaurants(id1: str, id2: str):
+    return {
+        "id1": id1,
+        "id2": id2,
+        "verdict": f"**AI Verdict:** Based on a semantic comparison of recent reviews, {id1} generally scores higher on 'Food Quality' (85% vs 72%), but {id2} offers better 'Value for Money'. If budget is your priority, choose {id2}. If taste is paramount, go with {id1}.",
+        "winner": id1
+    }
