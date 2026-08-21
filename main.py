@@ -65,6 +65,7 @@ restaurant_aspects = {}
 restaurant_trends = {}
 restaurant_total_reviews = {}
 global_sentiment_distribution = {"Positive": 0, "Negative": 0, "Neutral": 0}
+recently_updated_restaurants = set()
 
 FOOD_KEYWORDS = ["burger", "pizza", "biryani", "pasta", "chicken", "paneer", "dosa", "dessert", "cake", "coffee", "tea", "sandwich", "fries", "kebab", "thali", "fish", "mutton", "dal", "roti", "naan", "rice", "noodles", "sushi", "momos"]
 PROS_KEYWORDS = ["taste", "tasty", "delicious", "yummy", "good", "great", "awesome", "nice", "ambience", "service", "fast", "quick", "friendly", "clean", "hygiene", "fresh", "hot", "spicy", "sweet", "perfect"]
@@ -706,6 +707,7 @@ def add_restaurant_review(restaurant_id: str, req: ReviewSubmitRequest):
         restaurant_avg_ratings[name] = new_avg
         restaurant_sentiments[name] = new_sentiment_score
         restaurant_total_reviews[name] = total
+        recently_updated_restaurants.add(name)
         
         return {"status": "success", "message": "Review added and AI knowledge updated"}
     except Exception as e:
@@ -728,7 +730,8 @@ def get_market_positioning():
             "id": f"r{idx+1}",
             "name": name,
             "price": cost,
-            "sentimentScore": score
+            "sentimentScore": score,
+            "isNew": name in recently_updated_restaurants
         })
         
     return {"data": positioning_data}

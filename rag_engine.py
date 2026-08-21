@@ -60,8 +60,7 @@ def simple_keyword_search(query: str, top_k: int = 10):
     words = [w for w in re.findall(r'\w+', query.lower()) if len(w) > 2]
     
     if not words:
-        # Fallback: just return random highly rated reviews
-        return reviews_df.head(top_k).to_dict('records')
+        return []
         
     # Score each review based on how many query words it contains
     def score_review(text):
@@ -106,7 +105,7 @@ def query_rag(query: str):
         prompt = f"""You are a Zomato Restaurant AI. User asked: "{query}"
 Relevant reviews:
 {context_str}
-Give a short, helpful answer (max 3-4 sentences). Recommend restaurants from reviews. Be friendly."""
+Give a short, helpful answer (max 3-4 sentences). Recommend restaurants from reviews. Be friendly. Do not invent restaurants if the user is just saying a greeting."""
 
         response = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
