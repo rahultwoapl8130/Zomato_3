@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import json
 import random
+from datetime import datetime
 import rag_engine
 
 class ChatRequest(BaseModel):
@@ -675,7 +676,7 @@ def add_restaurant_review(restaurant_id: str, req: ReviewSubmitRequest):
             'Reviewer': req.customerName,
             'Review': req.text,
             'Rating': req.rating,
-            'Time': '2026-08-20' # Using current date
+            'Time': datetime.now().strftime("%Y-%m-%d %H:%M") # Using current dynamic date
         }])
         
         df_reviews = pd.concat([df_reviews, new_rev], ignore_index=True)
