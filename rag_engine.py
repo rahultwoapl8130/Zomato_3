@@ -197,9 +197,16 @@ def query_rag(query: str):
         needs_search = check_needs_retrieval(query)
         
         if not needs_search:
-            # Answer directly without context
+            # Answer directly without context but with strict topic guardrails
+            guardrail_prompt = f"""You are a friendly Zomato Foodie Assistant. 
+Your ONLY job is to help users find great food, recommend restaurants, and chat about dining.
+- If the user sends a simple greeting (like 'Hi', 'Hello', 'How are you'), reply warmly and ask what they want to eat.
+- If the user asks a general knowledge, political, scientific, or completely off-topic question, DO NOT answer it. Politely refuse and remind them that you are a Zomato Restaurant Assistant.
+
+User: "{query}"
+"""
             response = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": f"You are a friendly Zomato Foodie Assistant. Answer the user casually. User: {query}"}],
+                messages=[{"role": "user", "content": guardrail_prompt}],
                 model="groq/compound-mini",
                 temperature=0.7,
                 max_tokens=250
