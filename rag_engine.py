@@ -32,12 +32,16 @@ def init_rag_async(df_reviews: pd.DataFrame):
     is_initializing = True
     
     try:
+        import gc
         if not df_reviews.empty:
             print("Initializing Advanced RAG DB (Hybrid + FAISS)...")
             
-            # Subsetting for demo to avoid huge memory/startup times. 
-            df_subset = df_reviews.dropna(subset=['Review']).tail(3000).reset_index(drop=True)
+            # Subsetting to 800 to avoid Render's 512MB RAM OOM crash
+            df_subset = df_reviews.dropna(subset=['Review']).tail(800).reset_index(drop=True)
             reviews_df = df_subset
+            
+            del df_reviews
+            gc.collect()
             
             # 1. Load Sentence Transformer (Lazy load to save memory initially)
             from sentence_transformers import SentenceTransformer
