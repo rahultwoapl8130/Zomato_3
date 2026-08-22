@@ -8,3 +8,4 @@ groq
 python-multipart
 rank_bm25
 scikit-learn
+duckduckgo-search

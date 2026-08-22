@@ -4,6 +4,7 @@ import threading
 import numpy as np
 from groq import Groq
 import gc
+from typing import List, Dict
 
 # Global state
 reviews_df = pd.DataFrame()
@@ -143,15 +144,19 @@ def hybrid_search(query: str, top_k: int = 5):
         
     return results
 
-def check_needs_retrieval(query: str) -> bool:
-    """Self-RAG Check: Does this query need database retrieval?"""
-    prompt = f"""Analyze the user's input and determine if it requires searching a restaurant database.
-If it is a greeting, casual chat, or general knowledge question, answer NO.
-If it is asking for food recommendations, restaurant details, or reviews, answer YES.
+def check_needs_retrieval(query: str, history_str: str) -> str:
+    """Self-RAG Check: Determine action (NO_SEARCH, DB_SEARCH, WEB_SEARCH)"""
+    prompt = f"""Analyze the user's input and conversation history to determine the next action.
+- If it is a simple greeting or general knowledge off-topic question, answer NO_SEARCH.
+- If the user asks for restaurant recommendations, reviews, or details about food in India, answer DB_SEARCH.
+- If the user specifically asks for web search, very recent news, or a completely unknown global restaurant, answer WEB_SEARCH.
+
+Conversation History:
+{history_str}
 
 User input: "{query}"
 
-Reply strictly with YES or NO."""
+Reply strictly with ONE word: NO_SEARCH, DB_SEARCH, or WEB_SEARCH."""
 
     try:
         response = groq_client.chat.completions.create(
@@ -161,14 +166,19 @@ Reply strictly with YES or NO."""
             max_tokens=10
         )
         answer = response.choices[0].message.content.strip().upper()
-        return "YES" in answer
+        if "WEB_SEARCH" in answer: return "WEB_SEARCH"
+        if "NO_SEARCH" in answer: return "NO_SEARCH"
+        return "DB_SEARCH"
     except:
-        return True # Default to True if error
+        return "DB_SEARCH"
 
-def generate_hypothetical_answer(query: str) -> str:
+def generate_hypothetical_answer(query: str, history_str: str) -> str:
     """HyDE: Generate a hypothetical review to improve semantic search"""
-    prompt = f"""You are a customer writing a Zomato review. Write a short, fake review (2-3 sentences) that perfectly answers the user's query.
+    prompt = f"""You are a customer writing a Zomato review. Write a short, fake review (2-3 sentences) that perfectly answers the user's query given their chat history.
 Do not include real restaurant names, just use descriptive words related to the vibe, food, and experience.
+
+History:
+{history_str}
 
 User query: "{query}"
 
@@ -185,7 +195,19 @@ Fake Review:"""
     except:
         return ""
 
-def query_rag(query: str):
+def do_web_search(query: str) -> str:
+    try:
+        from duckduckgo_search import DDGS
+        results = DDGS().text(f"restaurant {query}", max_results=3)
+        return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
+    except Exception as e:
+        return f"Web search failed: {str(e)}"
+
+def format_history(history: List[Dict[str, str]]) -> str:
+    if not history: return "None"
+    return "\n".join([f"{msg.get('role', 'user').capitalize()}: {msg.get('content', '')}" for msg in history[-4:]]) # Keep last 4 for context
+
+def query_rag(query: str, history: List[Dict[str, str]] = [], preference: str = "All"):
     if not is_initialized:
         return "System is still initializing the Advanced RAG Database. Please try again in a moment."
         
@@ -193,15 +215,30 @@ def query_rag(query: str):
         return "GROQ_API_KEY is not set."
 
     try:
-        # 1. Self-RAG: Check if we need to search
-        needs_search = check_needs_retrieval(query)
+        history_str = format_history(history)
         
-        if not needs_search:
-            # Answer directly without context but with strict topic guardrails
-            guardrail_prompt = f"""You are a friendly Zomato Foodie Assistant. 
+        # 1. Self-RAG: Check action
+        action = check_needs_retrieval(query, history_str)
+        
+        pref_rule = ""
+        if preference.lower() == "veg":
+            pref_rule = "CRITICAL: The user is a Strict Vegetarian. You MUST ONLY recommend Veg food. Ignore any meat reviews."
+        elif preference.lower() == "non-veg":
+            pref_rule = "The user loves Non-Veg. Highlight meat dishes if applicable."
+            
+        system_base = f"""You are a friendly Zomato Foodie Assistant.
 Your ONLY job is to help users find great food, recommend restaurants, and chat about dining.
-- If the user sends a simple greeting (like 'Hi', 'Hello', 'How are you'), reply warmly and ask what they want to eat.
-- If the user asks a general knowledge, political, scientific, or completely off-topic question, DO NOT answer it. Politely refuse and remind them that you are a Zomato Restaurant Assistant.
+Always reply in a friendly **Hinglish** tone (a mix of Hindi and English written in English script). Example: 'Bhai, yeh try kar!' or 'Main ekdum theek hoon, aaj kya khane ka mann hai?'.
+{pref_rule}"""
+
+        if action == "NO_SEARCH":
+            # Answer directly without context but with strict topic guardrails
+            guardrail_prompt = f"""{system_base}
+- If the user sends a simple greeting, reply warmly in Hinglish and ask what they want to eat.
+- If the user asks a general knowledge, political, scientific, or off-topic question, DO NOT answer it. Politely refuse in Hinglish.
+
+Chat History:
+{history_str}
 
 User: "{query}"
 """
@@ -213,11 +250,39 @@ User: "{query}"
             )
             return response.choices[0].message.content
             
+        if action == "WEB_SEARCH":
+            web_results = do_web_search(query)
+            prompt = f"""{system_base}
+I performed a live web search for the user's query since it wasn't in our local DB.
+Web Results:
+{web_results}
+
+Chat History:
+{history_str}
+
+User: "{query}"
+"""
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="groq/compound-mini",
+                temperature=0.7,
+                max_tokens=250
+            )
+            return response.choices[0].message.content
+
+        # action == "DB_SEARCH"
         # 2. HyDE: Generate hypothetical document
-        hypothetical_doc = generate_hypothetical_answer(query)
+        hypothetical_doc = generate_hypothetical_answer(query, history_str)
         
         # Combine original query and hypothetical doc for a super-powered search
-        search_query = f"{query} {hypothetical_doc}"
+        # Also append the last user message from history for context
+        last_user_msg = ""
+        for m in reversed(history):
+            if m.get('role') == 'user':
+                last_user_msg = m.get('content')
+                break
+                
+        search_query = f"{last_user_msg} {query} {hypothetical_doc}"
         
         # 3. Hybrid Search (TF-IDF + BM25)
         retrieved_reviews = hybrid_search(search_query, top_k=5)
@@ -228,15 +293,19 @@ User: "{query}"
             context_str = "\n".join([f"- {rev}" for rev in retrieved_reviews])
         
         # 4. Final Generation
-        prompt = f"""You are a friendly and enthusiastic AI Foodie Assistant! You help hungry users find amazing places to eat using real Zomato reviews.
+        prompt = f"""{system_base}
 
 YOUR BEHAVIOR:
 - Read the provided reviews carefully and highlight *why* people liked the restaurant.
 - Keep it short and sweet. Use food emojis to make the conversation lively.
-- If the reviews don't seem relevant, say 'Oops! My data doesn't have a good match for that right now.'
+- Reply in friendly **Hinglish**.
+- If the reviews don't seem relevant, say 'Oops! Mere paas iska exact match nahi mila.' in Hinglish.
 
 Relevant reviews:
 {context_str}
+
+Chat History:
+{history_str}
 
 User asked: "{query}"
 """
