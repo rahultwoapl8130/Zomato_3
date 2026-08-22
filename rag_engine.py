@@ -1,9 +1,9 @@
 import os
 import pandas as pd
 import threading
-import re
 import numpy as np
 from groq import Groq
+import gc
 
 # Global state
 reviews_df = pd.DataFrame()
@@ -15,16 +15,16 @@ groq_client = None
 if GROQ_API_KEY:
     groq_client = Groq(api_key=GROQ_API_KEY)
 
-# Advanced RAG components
-embedding_model = None
-faiss_index = None
+# Advanced Lightweight RAG components
+tfidf_vectorizer = None
+tfidf_matrix = None
 bm25_model = None
 corpus_texts = []
 corpus_metadata = []
 
 def init_rag_async(df_reviews: pd.DataFrame):
     global reviews_df, is_initialized, is_initializing
-    global embedding_model, faiss_index, bm25_model, corpus_texts, corpus_metadata
+    global tfidf_vectorizer, tfidf_matrix, bm25_model, corpus_texts, corpus_metadata
     
     if is_initialized or is_initializing:
         return
@@ -32,25 +32,19 @@ def init_rag_async(df_reviews: pd.DataFrame):
     is_initializing = True
     
     try:
-        import gc
         if not df_reviews.empty:
-            print("Initializing Advanced RAG DB (Hybrid + FAISS)...")
+            print("Initializing Advanced RAG DB (Hybrid + TF-IDF)...")
             
-            # Subsetting to 800 to avoid Render's 512MB RAM OOM crash
-            df_subset = df_reviews.dropna(subset=['Review']).tail(800).reset_index(drop=True)
+            # Using 1500 reviews - TF-IDF is memory efficient
+            df_subset = df_reviews.dropna(subset=['Review']).tail(1500).reset_index(drop=True)
             reviews_df = df_subset
             
             del df_reviews
             gc.collect()
             
-            # 1. Load Sentence Transformer (Lazy load to save memory initially)
-            from sentence_transformers import SentenceTransformer
-            import faiss
+            # 1. Load ML models (scikit-learn is lightweight)
+            from sklearn.feature_extraction.text import TfidfVectorizer
             from rank_bm25 import BM25Okapi
-            
-            print("Loading Embedding Model...")
-            # all-MiniLM-L6-v2 is ~80MB, fast and lightweight
-            embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
             
             # 2. Prepare Corpus
             print("Preparing Corpus...")
@@ -59,7 +53,7 @@ def init_rag_async(df_reviews: pd.DataFrame):
                 rating = str(row.get('Rating', '0'))
                 review_text = str(row.get('Review', ''))
                 
-                # We embed a combination of restaurant name and review for better context
+                # Combine for better context
                 combined_text = f"Restaurant: {restaurant}. Rating: {rating} stars. Review: {review_text}"
                 corpus_texts.append(combined_text)
                 corpus_metadata.append({
@@ -68,12 +62,10 @@ def init_rag_async(df_reviews: pd.DataFrame):
                     "review": review_text
                 })
             
-            # 3. Create FAISS Vector Index
-            print("Building FAISS Index...")
-            embeddings = embedding_model.encode(corpus_texts, convert_to_numpy=True)
-            dimension = embeddings.shape[1]
-            faiss_index = faiss.IndexFlatL2(dimension)
-            faiss_index.add(embeddings)
+            # 3. Create TF-IDF Vector Index (Lightweight Semantic Approximation)
+            print("Building TF-IDF Index...")
+            tfidf_vectorizer = TfidfVectorizer(stop_words='english')
+            tfidf_matrix = tfidf_vectorizer.fit_transform(corpus_texts)
             
             # 4. Create BM25 Keyword Index
             print("Building BM25 Index...")
@@ -96,20 +88,24 @@ def init_rag(df_reviews: pd.DataFrame):
 
 def hybrid_search(query: str, top_k: int = 5):
     """
-    Performs FAISS Vector Search + BM25 Keyword Search, 
+    Performs TF-IDF Vector Search + BM25 Keyword Search, 
     and combines them using Reciprocal Rank Fusion (RRF).
     """
-    if not is_initialized or not faiss_index or not bm25_model:
+    if not is_initialized or tfidf_matrix is None or not bm25_model:
         return []
         
-    # 1. Semantic Search (FAISS)
-    query_vector = embedding_model.encode([query], convert_to_numpy=True)
-    distances, faiss_indices = faiss_index.search(query_vector, top_k * 2)
+    from sklearn.metrics.pairwise import cosine_similarity
     
-    faiss_results = {}
-    for rank, idx in enumerate(faiss_indices[0]):
-        if idx < len(corpus_texts):
-            faiss_results[idx] = rank + 1
+    # 1. Semantic-like Search (TF-IDF)
+    query_vec = tfidf_vectorizer.transform([query])
+    cosine_similarities = cosine_similarity(query_vec, tfidf_matrix).flatten()
+    # Get top_k*2 indices sorted by score descending
+    tfidf_indices = cosine_similarities.argsort()[::-1][:top_k * 2]
+    
+    tfidf_results = {}
+    for rank, idx in enumerate(tfidf_indices):
+        if cosine_similarities[idx] > 0:
+            tfidf_results[idx] = rank + 1
             
     # 2. Keyword Search (BM25)
     tokenized_query = query.lower().split(" ")
@@ -127,12 +123,12 @@ def hybrid_search(query: str, top_k: int = 5):
     k = 60
     rrf_scores = {}
     
-    all_indices = set(list(faiss_results.keys()) + list(bm25_results.keys()))
+    all_indices = set(list(tfidf_results.keys()) + list(bm25_results.keys()))
     
     for idx in all_indices:
         score = 0.0
-        if idx in faiss_results:
-            score += 1.0 / (k + faiss_results[idx])
+        if idx in tfidf_results:
+            score += 1.0 / (k + tfidf_results[idx])
         if idx in bm25_results:
             score += 1.0 / (k + bm25_results[idx])
         rrf_scores[idx] = score
@@ -191,7 +187,7 @@ Fake Review:"""
 
 def query_rag(query: str):
     if not is_initialized:
-        return "System is still initializing the Advanced RAG Database (Loading FAISS and Transformers). Please try again in a moment."
+        return "System is still initializing the Advanced RAG Database. Please try again in a moment."
         
     if not groq_client:
         return "GROQ_API_KEY is not set."
@@ -216,7 +212,7 @@ def query_rag(query: str):
         # Combine original query and hypothetical doc for a super-powered search
         search_query = f"{query} {hypothetical_doc}"
         
-        # 3. Hybrid Search (FAISS + BM25)
+        # 3. Hybrid Search (TF-IDF + BM25)
         retrieved_reviews = hybrid_search(search_query, top_k=5)
         
         if not retrieved_reviews:
@@ -252,8 +248,8 @@ User asked: "{query}"
         return f"Sorry, backend error: {str(e)}"
 
 def add_review(restaurant_name: str, rating: float, review_text: str):
-    global reviews_df, corpus_texts, corpus_metadata, faiss_index, bm25_model
-    if not is_initialized or not embedding_model:
+    global reviews_df, corpus_texts, corpus_metadata, tfidf_matrix, tfidf_vectorizer, bm25_model
+    if not is_initialized or not tfidf_vectorizer:
         return
         
     # Update dataframe
@@ -273,11 +269,10 @@ def add_review(restaurant_name: str, rating: float, review_text: str):
         "review": review_text
     })
     
-    # Update FAISS
-    new_vector = embedding_model.encode([combined_text], convert_to_numpy=True)
-    faiss_index.add(new_vector)
+    # Update TF-IDF
+    tfidf_matrix = tfidf_vectorizer.fit_transform(corpus_texts)
     
-    # Update BM25 (Requires rebuilding index, but it's fast for 3000 docs)
+    # Update BM25
     from rank_bm25 import BM25Okapi
     tokenized_corpus = [doc.lower().split(" ") for doc in corpus_texts]
     bm25_model = BM25Okapi(tokenized_corpus)
